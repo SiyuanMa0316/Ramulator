@@ -48,6 +48,7 @@ public:
     // State of Rows:
     // There are too many rows for them to be instantiated individually
     // Instead, their bank (or an equivalent entity) tracks their state for them
+    // State of each ACTIVE row
     map<int, typename T::State> row_state;
 
     // Insert a node as one of my child nodes
@@ -100,6 +101,7 @@ private:
 
     // Lookup table for which commands must be preceded by which other commands (i.e., "prerequisite")
     // E.g., a read command to a closed bank must be preceded by an activate command
+    // what is the usage of cmd?
     function<typename T::Command(DRAM<T>*, typename T::Command cmd, int)>* prereq;
 
     // SAUGATA: added table for row hits
@@ -262,7 +264,7 @@ typename T::Command DRAM<T>::decode(typename T::Command cmd, const int* addr)
 }
 
 
-// Check
+// Recursively check if a cmd can be issued at clk
 template <typename T>
 bool DRAM<T>::check(typename T::Command cmd, const int* addr, long clk)
 {
@@ -354,13 +356,13 @@ void DRAM<T>::update_timing(typename T::Command cmd, const int* addr, long clk)
     // I am not a target node: I am merely one of its siblings
     if (id != addr[int(level)]) {
         for (auto& t : timing[int(cmd)]) {
-            if (!t.sibling)
+            if (!t.sibling) //find TimingEntry that specifies the time if current node (id) is sibling of target node (addr[int(level)]).
                 continue; // not an applicable timing parameter
 
             assert (t.dist == 1);
 
             long future = clk + t.val;
-            next[int(t.cmd)] = max(next[int(t.cmd)], future); // update future
+            next[int(t.cmd)] = max(next[int(t.cmd)], future); // update future to max of all sibling constraints. This future is the next available time of cmd in t, so this will update future of each command.
         }
 
         return; // stop recursion: only target nodes should be recursed
@@ -376,7 +378,7 @@ void DRAM<T>::update_timing(typename T::Command cmd, const int* addr, long clk)
         if (t.sibling)
             continue; // not an applicable timing parameter
 
-        long past = prev[int(cmd)][t.dist-1];
+        long past = prev[int(cmd)][t.dist-1];//the timing of the 4th previous row activate to the same rank (window of 4)
         if (past < 0)
             continue; // not enough history
 

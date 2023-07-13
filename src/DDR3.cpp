@@ -57,8 +57,8 @@ void DDR3::set_rank_number(int rank) {
 void DDR3::init_speed()
 {
     // nRRD, nFAW
-    int page = (org_entry.dq * org_entry.count[int(Level::Column)]) >> 13;
-    switch (speed_entry.rate) {
+    int page = (org_entry.dq * org_entry.count[int(Level::Column)]) >> 13;//page size = x_n*col_size
+    switch (speed_entry.rate) {//nFAW = cycles of 4 activate window, 
         case 800:  speed_entry.nRRD = (page==1) ? 4 : 4; speed_entry.nFAW = (page==1) ? 16 : 20; break;
         case 1066: speed_entry.nRRD = (page==1) ? 4 : 6; speed_entry.nFAW = (page==1) ? 20 : 27; break;
         case 1333: speed_entry.nRRD = (page==1) ? 4 : 5; speed_entry.nFAW = (page==1) ? 20 : 30; break;
@@ -70,7 +70,7 @@ void DDR3::init_speed()
 
     // nRFC, nXS
     int chip = org_entry.size;
-    switch (speed_entry.rate) {
+    switch (speed_entry.rate) {//refresh cycle only relate to device size
         case 800:  speed_entry.nRFC = (chip==512) ? 36  : (chip==1<<10) ? 44  : (chip==1<<11) ? 64  : (chip==1<<12) ? 104 : 140; break;
         case 1066: speed_entry.nRFC = (chip==512) ? 48  : (chip==1<<10) ? 59  : (chip==1<<11) ? 86  : (chip==1<<12) ? 139 : 187; break;
         case 1333: speed_entry.nRFC = (chip==512) ? 60  : (chip==1<<10) ? 74  : (chip==1<<11) ? 107 : (chip==1<<12) ? 174 : 234; break;
@@ -96,7 +96,7 @@ void DDR3::init_prereq()
     // RD
     prereq[int(Level::Rank)][int(Command::RD)] = [] (DRAM<DDR3>* node, Command cmd, int id) {
         switch (int(node->state)) {
-            case int(State::PowerUp): return Command::MAX;
+            case int(State::PowerUp): return Command::MAX;//do nothing
             case int(State::ActPowerDown): return Command::PDX;
             case int(State::PrePowerDown): return Command::PDX;
             case int(State::SelfRefresh): return Command::SRX;
@@ -117,6 +117,7 @@ void DDR3::init_prereq()
     prereq[int(Level::Bank)][int(Command::WR)] = prereq[int(Level::Bank)][int(Command::RD)];
 
     // REF
+    // If there is any open bank, precharge all banks. Then refresh this rank
     prereq[int(Level::Rank)][int(Command::REF)] = [] (DRAM<DDR3>* node, Command cmd, int id) {
         for (auto bank : node->children) {
             if (bank->state == State::Closed)
@@ -223,6 +224,7 @@ void DDR3::init_timing()
     vector<TimingEntry> *t;
 
     /*** Channel ***/
+    //commands to channel level
     t = timing[int(Level::Channel)];
 
     // CAS <-> CAS
@@ -237,9 +239,11 @@ void DDR3::init_timing()
 
 
     /*** Rank ***/
+    //commands to rank level
     t = timing[int(Level::Rank)];
 
     // CAS <-> CAS
+    // Same rank
     t[int(Command::RD)].push_back({Command::RD, 1, s.nCCD});
     t[int(Command::RD)].push_back({Command::RDA, 1, s.nCCD});
     t[int(Command::RDA)].push_back({Command::RD, 1, s.nCCD});
@@ -248,7 +252,7 @@ void DDR3::init_timing()
     t[int(Command::WR)].push_back({Command::WRA, 1, s.nCCD});
     t[int(Command::WRA)].push_back({Command::WR, 1, s.nCCD});
     t[int(Command::WRA)].push_back({Command::WRA, 1, s.nCCD});
-    t[int(Command::RD)].push_back({Command::WR, 1, s.nCL + s.nCCD + 2 - s.nCWL});
+    t[int(Command::RD)].push_back({Command::WR, 1, s.nCL + s.nCCD + 2 - s.nCWL});//(?)tRTR=2
     t[int(Command::RD)].push_back({Command::WRA, 1, s.nCL + s.nCCD + 2 - s.nCWL});
     t[int(Command::RDA)].push_back({Command::WR, 1, s.nCL + s.nCCD + 2 - s.nCWL});
     t[int(Command::RDA)].push_back({Command::WRA, 1, s.nCL + s.nCCD + 2 - s.nCWL});
@@ -258,6 +262,7 @@ void DDR3::init_timing()
     t[int(Command::WRA)].push_back({Command::RDA, 1, s.nCWL + s.nBL + s.nWTR});
 
     // CAS <-> CAS (between sibling ranks)
+    // different rank
     t[int(Command::RD)].push_back({Command::RD, 1, s.nBL + s.nRTRS, true});
     t[int(Command::RD)].push_back({Command::RDA, 1, s.nBL + s.nRTRS, true});
     t[int(Command::RDA)].push_back({Command::RD, 1, s.nBL + s.nRTRS, true});

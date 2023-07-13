@@ -282,7 +282,7 @@ public:
     map<vector<int>, Entry> table;
 
     RowTable(Controller<T>* ctrl) : ctrl(ctrl) {}
-
+    //update row table
     void update(typename T::Command cmd, const vector<int>& addr_vec, long clk)
     {
         auto begin = addr_vec.begin();

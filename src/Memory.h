@@ -97,18 +97,19 @@ public:
 
     vector<Controller<T>*> ctrls;
     T * spec;
-    vector<int> addr_bits;
+    vector<int> addr_bits;// bits allocated to this level, for example, addr_bits[Row] is the # of bits to locate a row number.
     string mapping_file;
     bool use_mapping_file;
     bool dump_mapping;
     
-    int tx_bits;
+    int tx_bits;//=log2((spec->prefetch_size * spec->channel_width / 8))
 
     Memory(const Config& configs, vector<Controller<T>*> ctrls)
         : ctrls(ctrls),
           spec(ctrls[0]->channel->spec),
           addr_bits(int(T::Level::MAX))
     {
+        // size (# of elements) of each level, for example, sz[Row] is the number of rows in each bank
         // make sure 2^N channels/ranks
         // TODO support channel number that is not powers of 2
         int *sz = spec->org_entry.count;
@@ -581,6 +582,7 @@ private:
             n ++;
         return n;
     }
+    // return lower bits, and remove lower bits from addr.
     int slice_lower_bits(long& addr, int bits)
     {
         int lbits = addr & ((1<<bits) - 1);

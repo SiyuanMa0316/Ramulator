@@ -35,9 +35,18 @@ public:
     /*** Command ***/
     enum class Command : int
     { 
-        ACT, PRE, PREA, 
-        RD,  WR,  RDA,  WRA, 
-        REF, PDE, PDX,  SRE, SRX, 
+        ACT, //Row activate
+        PRE, //Row precharge 
+        PREA, //Precharge all banks
+        RD, //Read
+        WR, //Write
+        RDA, //Read with Auto-Precharge
+        WRA, //Write with Auto-Precharge
+        REF, //Refresh
+        PDE, //Enter power-down
+        PDX, //Exit power-down
+        SRE, //Self refresh entry
+        SRX, //Self refresh exit
         MAX
     };
 
@@ -46,13 +55,13 @@ public:
         "RD",  "WR",  "RDA",  "WRA", 
         "REF", "PDE", "PDX",  "SRE", "SRX"
     };
-
+    //scope related to a cmd
     Level scope[int(Command::MAX)] = {
         Level::Row,    Level::Bank,   Level::Rank,   
         Level::Column, Level::Column, Level::Column, Level::Column,
         Level::Rank,   Level::Rank,   Level::Rank,   Level::Rank,   Level::Rank
     };
-
+    //This cmd is activating a row
     bool is_opening(Command cmd) 
     {
         switch(int(cmd)) {
@@ -62,7 +71,7 @@ public:
                 return false;
         }
     }
-
+    //cmd is accessing an open bank
     bool is_accessing(Command cmd) 
     {
         switch(int(cmd)) {
@@ -103,7 +112,12 @@ public:
     /* State */
     enum class State : int
     {
-        Opened, Closed, PowerUp, ActPowerDown, PrePowerDown, SelfRefresh, MAX
+        Opened, Closed, //bank state 
+        PowerUp, //rank idle
+        ActPowerDown,//power down from active bank
+        PrePowerDown, //power down from idle bank
+        SelfRefresh,
+        MAX
     } start[int(Level::MAX)] = {
         State::MAX, State::PowerUp, State::Closed, State::Closed, State::MAX
     };
@@ -114,7 +128,7 @@ public:
         Command::REF, Command::PDE, Command::SRE
     };
 
-    /* Prerequisite */
+    /* Prerequisite, command need to be issued at current state to get to this command. */
     function<Command(DRAM<DDR3>*, Command cmd, int)> prereq[int(Level::MAX)][int(Command::MAX)];
 
     // SAUGATA: added function object container for row hit status
@@ -126,16 +140,16 @@ public:
     struct TimingEntry
     {
         Command cmd;
-        int dist;
+        int dist;//distance to a previous command that you want to calculate timing constrant from
         int val;
         bool sibling;
     }; 
     vector<TimingEntry> timing[int(Level::MAX)][int(Command::MAX)];
 
-    /* Lambda */
+    /* Lambda, which is the operates the state machine */
     function<void(DRAM<DDR3>*, int)> lambda[int(Level::MAX)][int(Command::MAX)];
 
-    /* Organization */
+    /* Organization */// This is the org of 1 device
     enum class Org : int
     {
         DDR3_512Mb_x4, DDR3_512Mb_x8, DDR3_512Mb_x16,
@@ -149,14 +163,14 @@ public:
     struct OrgEntry {
         int size;
         int dq;
-        int count[int(Level::MAX)];
+        int count[int(Level::MAX)];//number of channel, rank, bank, row, col
     } org_table[int(Org::MAX)] = {
         {  512,  4, {0, 0, 8, 1<<13, 1<<11}}, {  512,  8, {0, 0, 8, 1<<13, 1<<10}}, {  512, 16, {0, 0, 8, 1<<12, 1<<10}},
         {1<<10,  4, {0, 0, 8, 1<<14, 1<<11}}, {1<<10,  8, {0, 0, 8, 1<<14, 1<<10}}, {1<<10, 16, {0, 0, 8, 1<<13, 1<<10}},
         {2<<10,  4, {0, 0, 8, 1<<15, 1<<11}}, {2<<10,  8, {0, 0, 8, 1<<15, 1<<10}}, {2<<10, 16, {0, 0, 8, 1<<14, 1<<10}},
         {4<<10,  4, {0, 0, 8, 1<<16, 1<<11}}, {4<<10,  8, {0, 0, 8, 1<<16, 1<<10}}, {4<<10, 16, {0, 0, 8, 1<<15, 1<<10}},
         {8<<10,  4, {0, 0, 8, 1<<16, 1<<12}}, {8<<10,  8, {0, 0, 8, 1<<16, 1<<11}}, {8<<10, 16, {0, 0, 8, 1<<16, 1<<10}}
-    }, org_entry;
+    }, org_entry;//{size, x_n, {channel, rank, bank, row, col}}
 
     void set_channel_number(int channel);
     void set_rank_number(int rank);
@@ -179,15 +193,29 @@ public:
     struct SpeedEntry {
         int rate;
         double freq, tCK;
-        int nBL, nCCD, nRTRS;
-        int nCL, nRCD, nRP, nCWL;
-        int nRAS, nRC;
-        int nRTP, nWTR, nWR;
-        int nRRD, nFAW;
-        int nRFC, nREFI;
-        int nPD, nXP, nXPDLL;
-        int nCKESR, nXS, nXSDLL;
-    } speed_table[int(Speed::MAX)] = {
+        int nBL; //Burst cycle. DDR3 has burst length of 8, on both rising and falling edge, so nBL=8/2=4
+        int nCCD; //column-to-column delay
+        int nRTRS; //rank-to-rank switching time
+        int nCL; //tCAS, column access strobe latency. After issueing Column read command to data placed on bus.
+        int nRCD; //Row to column command delay.
+        int nRP; //Row precharge
+        int nCWL; //CAS write latency, tCWD column write delay
+        int nRAS; //Row access strobe. Row access command to data restoration
+        int nRC; //Row cycle. Time interval between accesses to different row in a bank. = tRAS+tRP
+        int nRTP; //Read to precharge
+        int nWTR; //Write to read delay time
+        int nWR; //Write recovery time
+        int nRRD;//Row activation to row activation delay
+        int nFAW;//Four activation window
+        int nRFC;//Refresh cycle time
+        int nREFI;//Refresh interval
+        int nPD; //Power-down entry to power-down exit timing
+        int nXP; //Exit power-down with DLL on to any valid command
+        int nXPDLL; //Exit power-down with DLL on to any valid command
+        int nCKESR; //Minimum CKE low pulse width for self refresh entry to self refresh exit timing
+        int nXS; //CKE HIGH assert to gear-down enable time
+        int nXSDLL; //CKE HIGH assert to gear-down enable time
+    } speed_table[int(Speed::MAX)] = {//some timing parameters are to be initialized by set_speed
         {800,  (400.0/3)*3, (3/0.4)/3, 4, 4, 2,  5,  5,  5,  5, 15, 20, 4, 4,  6, 0, 0, 0, 3120, 3, 3, 10, 4, 0, 512},
         {800,  (400.0/3)*3, (3/0.4)/3, 4, 4, 2,  6,  6,  6,  5, 15, 21, 4, 4,  6, 0, 0, 0, 3120, 3, 3, 10, 4, 0, 512},
         {1066, (400.0/3)*4, (3/0.4)/4, 4, 4, 2,  6,  6,  6,  6, 20, 26, 4, 4,  8, 0, 0, 0, 4160, 3, 4, 13, 4, 0, 512},

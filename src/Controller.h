@@ -324,7 +324,7 @@ public:
                 [req](Request& wreq){ return req.addr == wreq.addr;}) != writeq.q.end()){
             req.depart = clk + 1;
             pending.push_back(req);
-            readq.q.pop_back();
+            readq.q.pop_back();//undo queue.q.push_back(req)
         }
         return true;
     }

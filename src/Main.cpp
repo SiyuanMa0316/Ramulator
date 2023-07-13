@@ -46,7 +46,7 @@ void run_dramtrace(const Config& configs, Memory<T, Controller>& memory, const c
     long addr = 0;
     Request::Type type = Request::Type::READ;
     map<int, int> latencies;
-    auto read_complete = [&latencies](Request& r){latencies[r.depart - r.arrive]++;};
+    auto read_complete = [&latencies](Request& r){latencies[r.depart - r.arrive]++;};//callback function
 
     Request req(addr, type, read_complete);
 
